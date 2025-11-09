@@ -19,7 +19,6 @@ export function loadBookings(userId: string): Booking[] {
   try {
     const raw = localStorage.getItem(key(userId));
     const list = raw ? (JSON.parse(raw) as any[]) : [];
-    // compat: si no tienen status, márcalas como "paid"
     return list.map((b) => ({ status: "paid", ...b })) as Booking[];
   } catch {
     return [];
@@ -33,8 +32,29 @@ export function saveBooking(userId: string, booking: Booking) {
   localStorage.setItem(key(userId), JSON.stringify(all));
 }
 
-export function removeBooking(userId: string, bookingId: string) {
+export function upsertBooking(userId: string, booking: Booking) {
   if (typeof window === "undefined") return;
-  const all = loadBookings(userId).filter((b) => b.id !== bookingId);
+  const all = loadBookings(userId);
+  const i = all.findIndex((b) => b.id === booking.id);
+  if (i >= 0) all[i] = booking; else all.push(booking);
   localStorage.setItem(key(userId), JSON.stringify(all));
+}
+
+export function updateBookingStatus(
+  userId: string,
+  bookingId: string,
+  status: BookingStatus,
+  paymentRef?: string
+) {
+  if (typeof window === "undefined") return false;
+  const all = loadBookings(userId);
+  const i = all.findIndex((b) => b.id === bookingId);
+  if (i < 0) return false;
+  all[i] = { ...all[i], status, paymentRef };
+  localStorage.setItem(key(userId), JSON.stringify(all));
+  return true;
+}
+
+export function getBookingById(userId: string, bookingId: string): Booking | undefined {
+  return loadBookings(userId).find((b) => b.id === bookingId);
 }

@@ -26,12 +26,12 @@ export default function EpaycoRespuestaPage() {
   );
 }
 
-// -------- contenido con useSearchParams dentro de Suspense ----------
+// -------- contenido (actualiza/crea la reserva y redirige) --------
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { getParkingById } from "@/lib/parkings";
-import { saveBooking, type Booking } from "@/lib/bookings";
+import { type Booking } from "@/lib/bookings";
 
 async function fetchTxStatus(ref: string) {
   try {
@@ -49,24 +49,30 @@ function RespuestaContent() {
   const router = useRouter();
   const { user } = useUser();
 
-  const pid = sp.get("pid") || "";
-  const startISO = sp.get("start") || "";
-  const endISO = sp.get("end") || "";
-  const total = Number(sp.get("total") || 0);
+  // Stash de checkout, por si faltan params
+  const stash = (() => {
+    try { return JSON.parse(sessionStorage.getItem("parkinglite:lastBooking") || "null"); }
+    catch { return null; }
+  })();
+
+  const pid = sp.get("pid") || stash?.parkingId || "";
+  const startISO = sp.get("start") || stash?.startISO || "";
+  const endISO = sp.get("end") || stash?.endISO || "";
+  const total = Number(sp.get("total") || stash?.total || 0);
   const localRef = sp.get("ref") || "";
   const refPayco = sp.get("ref_payco") || sp.get("x_ref_payco") || "";
+  const bookingId = sp.get("bid") || stash?.id || `b${Date.now()}`;
 
   const [status, setStatus] = useState<string>("Verificando…");
 
   useEffect(() => {
     (async () => {
-      const parking = getParkingById(pid);
-      if (!user || !parking) {
-        setStatus("Datos incompletos");
-        return;
-      }
+      if (!user) { setStatus("Sin usuario"); return; }
+      const parking = getParkingById(pid); // opcional, solo para consistencia
+
       const refToCheck = refPayco || localRef;
-      const epStatus = refToCheck ? await fetchTxStatus(refToCheck) : "Pendiente";
+      let epStatus = "Pendiente";
+      if (refToCheck) epStatus = await fetchTxStatus(refToCheck);
       setStatus(epStatus);
 
       const normalized =
@@ -74,20 +80,27 @@ function RespuestaContent() {
         : epStatus.toLowerCase().includes("rechaz") ? "failed"
         : "pending";
 
-      const booking: Booking = {
-        id: `b${Date.now()}`,
-        parkingId: parking.id,
-        userId: user.id,
-        startISO,
-        endISO,
-        total,
-        createdAtISO: new Date().toISOString(),
-        status: normalized,
-        paymentRef: refToCheck || undefined,
-      };
-      saveBooking(user.id, booking);
+      const { updateBookingStatus, upsertBooking } = await import("@/lib/bookings");
+      const updated = updateBookingStatus(user.id, bookingId, normalized, refToCheck || undefined);
 
-      setTimeout(() => router.replace("/agendas"), 800);
+      // si por alguna razón no existía la reserva pending, créala ahora
+      if (!updated) {
+        const booking: Booking = {
+          id: bookingId,
+          parkingId: pid || parking?.id || "unknown",
+          userId: user.id,
+          startISO: startISO || new Date().toISOString(),
+          endISO: endISO || startISO || new Date().toISOString(),
+          total: total || 0,
+          createdAtISO: new Date().toISOString(),
+          status: normalized,
+          paymentRef: refToCheck || undefined,
+        };
+        upsertBooking(user.id, booking);
+      }
+
+      try { sessionStorage.removeItem("parkinglite:lastBooking"); } catch {}
+      setTimeout(() => router.replace("/agendas"), 600);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

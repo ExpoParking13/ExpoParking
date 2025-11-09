@@ -1,7 +1,7 @@
 // src/app/checkout/page.tsx
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 export const dynamic = "force-dynamic";
 
 import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/nextjs";
@@ -46,8 +46,8 @@ export default function CheckoutPage() {
   );
 }
 
-// -------- contenido que usa useSearchParams (dentro de Suspense) ----------
-import { useSearchParams, useRouter } from "next/navigation";
+// ---------- contenido real (usa useSearchParams) ----------
+import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { getParkingById } from "@/lib/parkings";
 
@@ -57,7 +57,6 @@ function fmt(d: Date) {
 
 function CheckoutContent() {
   const sp = useSearchParams();
-  const router = useRouter();
   const { user } = useUser();
 
   const pid = sp.get("pid") || "";
@@ -72,19 +71,22 @@ function CheckoutContent() {
     start && end ? Math.max(1, Math.round((+end - +start) / (60 * 60 * 1000))) : 0;
   const total = parking ? hours * parking.pricePerHour : 0;
 
+  // bookingId estable durante la vida de la página
+  const bookingIdRef = useRef<string>();
+  if (!bookingIdRef.current) bookingIdRef.current = `b${Date.now()}`;
+  const bookingId = bookingIdRef.current;
+
   const EP_PUBLIC = process.env.NEXT_PUBLIC_EPAYCO_PUBLIC_KEY || "";
   const EP_TEST = (process.env.NEXT_PUBLIC_EPAYCO_TEST || "true") === "true";
 
   const loadEpayco = async () => {
     if (typeof window === "undefined") return false;
     if ((window as any).ePayco) return true;
-
     if (document.getElementById("epayco-checkout")) {
       return new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(!!(window as any).ePayco), 100)
       );
     }
-
     await new Promise<void>((resolve, reject) => {
       const s = document.createElement("script");
       s.id = "epayco-checkout";
@@ -98,7 +100,26 @@ function CheckoutContent() {
   };
 
   const payWithEpayco = async () => {
-    if (!parking || !start || !end) return;
+    if (!parking || !start || !end || !user) return;
+
+    // 1) Guardar reserva PENDING antes de salir a ePayco
+    const pending = {
+      id: bookingId,
+      parkingId: parking.id,
+      userId: user.id,
+      startISO: startISO,
+      endISO: endISO,
+      total,
+      createdAtISO: new Date().toISOString(),
+      status: "pending" as const,
+    };
+    const { upsertBooking } = await import("@/lib/bookings");
+    upsertBooking(user.id, pending);
+    try {
+      sessionStorage.setItem("parkinglite:lastBooking", JSON.stringify(pending));
+    } catch {}
+
+    // 2) Abrir ePayco
     const ok = await loadEpayco();
     if (!ok) {
       alert("No se pudo cargar ePayco.");
@@ -110,9 +131,10 @@ function CheckoutContent() {
       process.env.NEXT_PUBLIC_BASE_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
 
+    // Pasamos bookingId (bid) en la URL para ubicar y actualizar
     const response = `${BASE_URL}/pago/epayco/respuesta?pid=${pid}&start=${encodeURIComponent(
       startISO
-    )}&end=${encodeURIComponent(endISO)}&total=${total}&ref=${reference}`;
+    )}&end=${encodeURIComponent(endISO)}&total=${total}&ref=${reference}&bid=${bookingId}`;
 
     const handler = (window as any).ePayco.checkout.configure({
       key: EP_PUBLIC,
@@ -131,13 +153,16 @@ function CheckoutContent() {
       external: "true",
       response,
       invoice: reference,
-      extra1: user?.id || "",
+      extra1: user.id,      // trazabilidad
+      extra2: bookingId,    // por si lo necesitas en webhook
     });
   };
 
-  return !parking || !start || !end ? (
-    <p className="text-red-600">Datos incompletos. Vuelve a seleccionar en el mapa.</p>
-  ) : (
+  if (!parking || !start || !end) {
+    return <p className="text-red-600">Datos incompletos. Vuelve a seleccionar en el mapa.</p>;
+  }
+
+  return (
     <section className="rounded-2xl bg-white border shadow-sm p-4 sm:p-6">
       <h3 className="text-lg font-semibold text-gray-900">{parking.name}</h3>
       <p className="text-gray-600">{parking.address}</p>
