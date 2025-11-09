@@ -9,9 +9,15 @@ import Link from "next/link";
 import MapAutoResize from "@/components/MapAutoResize";
 import { PARKINGS } from "@/lib/parkings";
 
-import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
-import iconUrl from "leaflet/dist/images/marker-icon.png";
-import shadowUrl from "leaflet/dist/images/marker-shadow.png";
+import iconRetina from "leaflet/dist/images/marker-icon-2x.png";
+import iconPng    from "leaflet/dist/images/marker-icon.png";
+import iconShadow from "leaflet/dist/images/marker-shadow.png";
+
+
+// fuerza string para Leaflet (sirve en dev/prod)
+const iconRetinaUrl = typeof iconRetina === "string" ? iconRetina : (iconRetina as any).src;
+const iconUrl       = typeof iconPng    === "string" ? iconPng    : (iconPng    as any).src;
+const shadowUrl     = typeof iconShadow === "string" ? iconShadow : (iconShadow as any).src;
 
 const defaultIcon = L.icon({
   iconRetinaUrl, iconUrl, shadowUrl,
@@ -19,7 +25,6 @@ const defaultIcon = L.icon({
   popupAnchor: [1, -34], tooltipAnchor: [16, -28],
   shadowSize: [41, 41],
 });
-
 const CENTER = { lat: 4.5989, lng: -74.0697 };
 
 function haversineMeters(a:{lat:number;lng:number}, b:{lat:number;lng:number}) {
