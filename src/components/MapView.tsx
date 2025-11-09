@@ -79,7 +79,6 @@ export default function MapView({ fill=false }: { fill?: boolean }) {
         scrollWheelZoom
         updateWhenIdle
         className="h-full w-full"
-        whenReady={(m)=>m.target.invalidateSize()}
       >
         <MapAutoResize />
 
