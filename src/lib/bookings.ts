@@ -1,3 +1,4 @@
+// src/lib/bookings.ts
 export type BookingStatus = "paid" | "failed" | "pending";
 
 export type Booking = {
@@ -19,6 +20,7 @@ export function loadBookings(userId: string): Booking[] {
   try {
     const raw = localStorage.getItem(key(userId));
     const list = raw ? (JSON.parse(raw) as any[]) : [];
+    // fallback de status por si hay reservas viejas sin campo
     return list.map((b) => ({ status: "paid", ...b })) as Booking[];
   } catch {
     return [];
@@ -57,4 +59,21 @@ export function updateBookingStatus(
 
 export function getBookingById(userId: string, bookingId: string): Booking | undefined {
   return loadBookings(userId).find((b) => b.id === bookingId);
+}
+
+/* 🔧 nueva: elimina una reserva por id */
+export function removeBooking(userId: string, bookingId: string): boolean {
+  if (typeof window === "undefined") return false;
+  const all = loadBookings(userId);
+  const i = all.findIndex((b) => b.id === bookingId);
+  if (i < 0) return false;
+  all.splice(i, 1);
+  localStorage.setItem(key(userId), JSON.stringify(all));
+  return true;
+}
+
+/* opcional: borra todas las reservas del usuario */
+export function clearBookings(userId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(key(userId));
 }

@@ -72,7 +72,7 @@ function CheckoutContent() {
   const total = parking ? hours * parking.pricePerHour : 0;
 
   // bookingId estable durante la vida de la página
-  const bookingIdRef = useRef<string>();
+  const bookingIdRef = useRef<string>(pid);
   if (!bookingIdRef.current) bookingIdRef.current = `b${Date.now()}`;
   const bookingId = bookingIdRef.current;
 
