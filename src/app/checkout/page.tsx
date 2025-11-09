@@ -57,7 +57,7 @@ function fmt(d: Date) {
 
 function CheckoutContent() {
   const sp = useSearchParams();
-  const { user } = useUser();
+  const { user } = useUser(); //commentary
 
   const pid = sp.get("pid") || "";
   const startISO = sp.get("start") || "";
