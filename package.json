@@ -2,7 +2,7 @@
   "name": "parking-lite",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": ">=18.18 <23" },
+  "engines": { "node": ">=20.9.0" },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
