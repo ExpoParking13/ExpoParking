@@ -77,7 +77,6 @@ export default function MapView({ fill=false }: { fill?: boolean }) {
         center={center}
         zoom={16}
         scrollWheelZoom
-        updateWhenIdle
         className="h-full w-full"
       >
         <MapAutoResize />
