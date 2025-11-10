@@ -1,4 +1,3 @@
-// src/app/pago/epayco/respuesta/page.tsx
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
@@ -26,12 +25,10 @@ export default function EpaycoRespuestaPage() {
   );
 }
 
-// ---------- contenido ----------
 import { useSearchParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { getParkingById } from "@/lib/parkings";
 import { type Booking } from "@/lib/bookings";
-// import { decRange } from "@/lib/aforo"; // ya NO se usa en modo test
+// import { decRange } from "@/lib/aforo"; // no liberamos aforo en test
 
 async function fetchTxStatus(ref: string) {
   try {
@@ -49,81 +46,63 @@ function RespuestaContent() {
   const router = useRouter();
   const { user } = useUser();
 
-  const TEST_MODE = (process.env.NEXT_PUBLIC_PAYMENT_TEST_MODE || "false") === "true";
+  const TEST_MODE = (process.env.NEXT_PUBLIC_PAYMENT_TEST_MODE || "true") === "true";
 
+  // Tomamos TODO del stash que dejamos en checkout
   const stash = (() => {
     try { return JSON.parse(sessionStorage.getItem("parkinglite:lastBooking") || "null"); }
     catch { return null; }
   })();
 
-  const pid = sp.get("pid") || stash?.parkingId || "";
-  const startISO = sp.get("start") || stash?.startISO || "";
-  const endISO = sp.get("end") || stash?.endISO || "";
-  const total = Number(sp.get("total") || stash?.total || 0);
-  const localRef = sp.get("ref") || "";
-  const refPayco = sp.get("ref_payco") || sp.get("x_ref_payco") || "";
-  const bookingId = sp.get("bid") || stash?.id || `b${Date.now()}`;
-
-  const [statusText, setStatusText] = useState<string>("Verificando…");
+  const refPayco = sp.get("ref_payco") || sp.get("x_ref_payco") || ""; // ePayco agrega esto
+  const [statusText, setStatusText] = useState("Verificando…");
 
   useEffect(() => {
     (async () => {
-      if (!user) { setStatusText("Sin usuario"); return; }
-      getParkingById(pid); // opcional, fuerza consistencia
-
-      const refToCheck = refPayco || localRef;
-
-      // 1) obtener estado real (por si quieres verlo en pantalla)
-      let epStatus = "Pendiente";
-      if (refToCheck) epStatus = await fetchTxStatus(refToCheck);
-
-      // 2) forzar pago exitoso en MODO TEST
-      let normalized: "paid" | "failed" | "pending";
-      if (TEST_MODE) {
-        normalized = "paid";
-        setStatusText("Aprobada (modo test)");
-      } else {
-        normalized = epStatus.toLowerCase().includes("acept")
-          ? "paid"
-          : epStatus.toLowerCase().includes("rechaz")
-          ? "failed"
-          : "pending";
-        setStatusText(epStatus);
+      if (!user || !stash) {
+        setStatusText("Datos incompletos");
+        setTimeout(() => router.replace("/agendas"), 2000);
+        return;
       }
 
-      // 3) actualizar / crear reserva como pagada (o según estado si no estás en test)
-      const { updateBookingStatus, upsertBooking } = await import("@/lib/bookings");
-      const updated = updateBookingStatus(user.id, bookingId, normalized, refToCheck || (TEST_MODE ? "test-forced" : undefined));
+      // Estado real (opcional, solo para mostrar)
+      let epStatus = "Pendiente";
+      if (refPayco) epStatus = await fetchTxStatus(refPayco);
 
-      if (!updated) {
+      // Modo test: siempre marcamos paid
+      const normalized: "paid" | "failed" | "pending" = TEST_MODE
+        ? "paid"
+        : epStatus.toLowerCase().includes("acept")
+          ? "paid"
+          : epStatus.toLowerCase().includes("rechaz")
+            ? "failed"
+            : "pending";
+
+      setStatusText(TEST_MODE ? "Aprobada (modo test)" : epStatus);
+
+      const { updateBookingStatus, upsertBooking } = await import("@/lib/bookings");
+      const ok = updateBookingStatus(user.id, stash.id, normalized, refPayco || (TEST_MODE ? "test-forced" : undefined));
+
+      if (!ok) {
         const booking: Booking = {
-          id: bookingId,
-          parkingId: pid || "unknown",
-          userId: user.id,
-          startISO: startISO || new Date().toISOString(),
-          endISO: endISO || startISO || new Date().toISOString(),
-          total: total || 0,
-          createdAtISO: new Date().toISOString(),
+          ...stash,
           status: normalized,
-          paymentRef: refToCheck || (TEST_MODE ? "test-forced" : undefined),
+          paymentRef: refPayco || (TEST_MODE ? "test-forced" : undefined),
         };
         upsertBooking(user.id, booking);
       }
 
-      // 4) en modo test NO liberamos aforo aunque “falle” (simulación éxito)
-      // if (!TEST_MODE && normalized === "failed" && pid && startISO && endISO) decRange(pid, startISO, endISO);
-
       try { sessionStorage.removeItem("parkinglite:lastBooking"); } catch {}
 
-      // 5) esperar 2s y redirigir a agendas
-      setTimeout(() => router.replace("/bookings"), 2000);
+      // Redirigimos SIEMPRE a los 2 s
+      setTimeout(() => router.replace("/agendas"), 2000);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="rounded-2xl bg-white border p-4">
-      <p><span className="font-medium">Referencia:</span> {refPayco || localRef || "(sin ref)"}</p>
+      <p><span className="font-medium">Referencia:</span> {refPayco || "(sin ref)"}</p>
       <p><span className="font-medium">Estado:</span> {statusText}</p>
       <p className="text-sm text-gray-600 mt-2">Guardando y redirigiendo a tus agendas…</p>
     </div>
