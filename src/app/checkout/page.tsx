@@ -79,27 +79,57 @@ function CheckoutContent() {
   const loadEpayco = async () => {
     if (typeof window === "undefined") return false;
     if ((window as any).ePayco) return true;
+
+    // si ya existe la etiqueta, esperamos a que cargue
     if (document.getElementById("epayco-checkout")) {
-      return new Promise<boolean>((resolve) =>
-        setTimeout(() => resolve(!!(window as any).ePayco), 100)
-      );
+      return new Promise<boolean>((resolve) => {
+        const t = setInterval(() => {
+          if ((window as any).ePayco) {
+            clearInterval(t);
+            resolve(true);
+          }
+        }, 50);
+        // timeout de seguridad
+        setTimeout(() => {
+          clearInterval(t);
+          resolve(!!(window as any).ePayco);
+        }, 4000);
+      });
     }
-    await new Promise<void>((resolve, reject) => {
-      const s = document.createElement("script");
-      s.id = "epayco-checkout";
-      s.src = "https://checkout.epayco.co/checkout.js";
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject();
-      document.body.appendChild(s);
-    });
-    return !!(window as any).ePayco;
+
+    // insertar script
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement("script");
+        s.id = "epayco-checkout";
+        s.src = "https://checkout.epayco.co/checkout.js";
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject();
+        document.body.appendChild(s);
+      });
+      return !!(window as any).ePayco;
+    } catch {
+      return false;
+    }
   };
 
   const payWithEpayco = async () => {
     if (!parking || !start || !end || !user) return;
 
-    // 1) guardar pending + stash y aumentar aforo
+    if (!EP_PUBLIC) {
+      alert("No está configurada NEXT_PUBLIC_EPAYCO_PUBLIC_KEY.");
+      return;
+    }
+
+    // 1) cargar ePayco primero
+    const ok = await loadEpayco();
+    if (!ok || !(window as any).ePayco) {
+      alert("No se pudo cargar el checkout de ePayco. Intenta de nuevo.");
+      return;
+    }
+
+    // 2) guardar pending + stash y aumentar aforo (solo si el script cargó)
     const pending = {
       id: bookingId,
       parkingId: parking.id,
@@ -117,20 +147,21 @@ function CheckoutContent() {
       sessionStorage.setItem("parkinglite:lastBooking", JSON.stringify(pending));
     } catch {}
 
-    // 2) abrir ePayco
-      const reference = `ref_${Date.now()}`;
-      const BASE_URL =
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        (typeof window !== "undefined" ? window.location.origin : "");
+    // 3) abrir ePayco
+    const reference = `ref_${Date.now()}`;
+    const BASE_URL =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      (typeof window !== "undefined" ? window.location.origin : "");
 
-      // ✅ sin query params: ePayco añadirá ?ref_payco=...
-      const response = `${BASE_URL}/pago/epayco/respuesta`;
+    // ✅ sin query params: ePayco añadirá ?ref_payco=...
+    const response = `${BASE_URL}/pago/epayco/respuesta`;
 
-      const handler = (window as any).ePayco.checkout.configure({
-        key: EP_PUBLIC,
-        test: EP_TEST,
-      });
+    const handler = (window as any).ePayco.checkout.configure({
+      key: EP_PUBLIC,
+      test: EP_TEST,
+    });
 
+    try {
       handler.open({
         name: "Parking Lite",
         description: parking.name + (plena ? " (tarifa plena)" : ""),
@@ -146,6 +177,11 @@ function CheckoutContent() {
         extra1: user.id,       // por si luego quieres usarlo
         extra2: bookingId,     // idem
       });
+    } catch (e) {
+      // si algo falla al abrir, podrías revertir la reserva aquí si quieres
+      console.error("Error abriendo ePayco:", e);
+      alert("No se pudo abrir el checkout de ePayco.");
+    }
   };
 
   if (!parking || !start || !end) {
