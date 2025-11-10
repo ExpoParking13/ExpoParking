@@ -22,9 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       afterSignUpUrl="/home"
       afterSignOutUrl="/"
     >
-      <html lang="es">
-        <body className="min-h-dvh bg-gray-50 text-gray-900 antialiased">{children}</body>
-      </html>
+    <body className="min-h-dvh bg-blue-50 text-slate-900 antialiased">
+      {children}
+    </body>
     </ClerkProvider>
   );
 }
