@@ -106,7 +106,7 @@ export default function MapView({ fill=false }: { fill?: boolean }) {
                 <div className="font-medium">{p.name}</div>
                 <div className="text-gray-600">{p.address}</div>
                 <div className="text-gray-600">{p.distanceM} m • ${p.pricePerHour}/h</div>
-                <div className="text-gray-600">Cupos: {p.available}/{p.spots}</div>
+                <div className="text-gray-600">Cupos: {p.spots}</div>
                 <div className="pt-2 flex gap-2">
                   <a href={`https://www.google.com/maps?q=${p.lat},${p.lng}`} target="_blank" rel="noreferrer" className="underline text-blue-600">
                     Ver en Google Maps

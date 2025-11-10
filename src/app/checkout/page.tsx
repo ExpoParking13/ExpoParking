@@ -21,11 +21,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function Fallback() {
-  return (
-    <section className="rounded-2xl bg-white border shadow-sm p-4">
-      Cargando…
-    </section>
-  );
+  return <section className="rounded-2xl bg-white border shadow-sm p-4">Cargando…</section>;
 }
 
 export default function CheckoutPage() {
@@ -38,7 +34,6 @@ export default function CheckoutPage() {
           </Suspense>
         </Shell>
       </SignedIn>
-
       <SignedOut>
         <RedirectToSignIn redirectUrl="/checkout" />
       </SignedOut>
@@ -46,10 +41,12 @@ export default function CheckoutPage() {
   );
 }
 
-// ---------- contenido real (usa useSearchParams) ----------
+// -------- contenido --------
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { getParkingById } from "@/lib/parkings";
+import { calcTotal } from "@/lib/pricing";
+import { incRange } from "@/lib/aforo";
 
 function fmt(d: Date) {
   return d.toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" });
@@ -57,7 +54,7 @@ function fmt(d: Date) {
 
 function CheckoutContent() {
   const sp = useSearchParams();
-  const { user } = useUser(); //commentary
+  const { user } = useUser();
 
   const pid = sp.get("pid") || "";
   const startISO = sp.get("start") || "";
@@ -67,11 +64,11 @@ function CheckoutContent() {
   const start = startISO ? new Date(startISO) : null;
   const end = endISO ? new Date(endISO) : null;
 
-  const hours =
-    start && end ? Math.max(1, Math.round((+end - +start) / (60 * 60 * 1000))) : 0;
-  const total = parking ? hours * parking.pricePerHour : 0;
+  const hours = start && end ? Math.max(1, Math.round((+end - +start) / 36e5)) : 0;
+  const price = parking?.pricePerHour || 0;
+  const { total, plena } = calcTotal(price, hours);
 
-  // bookingId estable durante la vida de la página
+  // id estable mientras se muestra la página
   const bookingIdRef = useRef<string>(pid);
   if (!bookingIdRef.current) bookingIdRef.current = `b${Date.now()}`;
   const bookingId = bookingIdRef.current;
@@ -102,24 +99,25 @@ function CheckoutContent() {
   const payWithEpayco = async () => {
     if (!parking || !start || !end || !user) return;
 
-    // 1) Guardar reserva PENDING antes de salir a ePayco
+    // 1) guardar pending + stash y aumentar aforo
     const pending = {
       id: bookingId,
       parkingId: parking.id,
       userId: user.id,
-      startISO: startISO,
-      endISO: endISO,
+      startISO,
+      endISO,
       total,
       createdAtISO: new Date().toISOString(),
       status: "pending" as const,
     };
     const { upsertBooking } = await import("@/lib/bookings");
     upsertBooking(user.id, pending);
+    incRange(parking.id, startISO, endISO);
     try {
       sessionStorage.setItem("parkinglite:lastBooking", JSON.stringify(pending));
     } catch {}
 
-    // 2) Abrir ePayco
+    // 2) abrir ePayco
     const ok = await loadEpayco();
     if (!ok) {
       alert("No se pudo cargar ePayco.");
@@ -131,7 +129,6 @@ function CheckoutContent() {
       process.env.NEXT_PUBLIC_BASE_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
 
-    // Pasamos bookingId (bid) en la URL para ubicar y actualizar
     const response = `${BASE_URL}/pago/epayco/respuesta?pid=${pid}&start=${encodeURIComponent(
       startISO
     )}&end=${encodeURIComponent(endISO)}&total=${total}&ref=${reference}&bid=${bookingId}`;
@@ -143,7 +140,7 @@ function CheckoutContent() {
 
     handler.open({
       name: "Parking Lite",
-      description: parking.name,
+      description: parking.name + (plena ? " (tarifa plena)" : ""),
       currency: "cop",
       amount: total,
       tax_base: total,
@@ -153,8 +150,8 @@ function CheckoutContent() {
       external: "true",
       response,
       invoice: reference,
-      extra1: user.id,      // trazabilidad
-      extra2: bookingId,    // por si lo necesitas en webhook
+      extra1: user.id,
+      extra2: bookingId,
     });
   };
 
@@ -163,15 +160,29 @@ function CheckoutContent() {
   }
 
   return (
-    <section className="rounded-2xl bg-white border shadow-sm p-4 sm:p-6">
+    <section className="rounded-2xl bg-white border border-blue-100 shadow-sm p-4 sm:p-6">
       <h3 className="text-lg font-semibold text-gray-900">{parking.name}</h3>
       <p className="text-gray-600">{parking.address}</p>
 
       <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-        <div><dt className="text-gray-500">Inicio</dt><dd className="text-gray-800">{fmt(start)}</dd></div>
-        <div><dt className="text-gray-500">Fin</dt><dd className="text-gray-800">{fmt(end)}</dd></div>
-        <div><dt className="text-gray-500">Horas</dt><dd className="text-gray-800">{hours}</dd></div>
-        <div><dt className="text-gray-500">Total</dt><dd className="text-gray-800">${total}</dd></div>
+        <div>
+          <dt className="text-gray-500">Inicio</dt>
+          <dd className="text-gray-800">{fmt(start)}</dd>
+        </div>
+        <div>
+          <dt className="text-gray-500">Fin</dt>
+          <dd className="text-gray-800">{fmt(end)}</dd>
+        </div>
+        <div>
+          <dt className="text-gray-500">Horas</dt>
+          <dd className="text-gray-800">{hours}</dd>
+        </div>
+        <div>
+          <dt className="text-gray-500">Total</dt>
+          <dd className="text-gray-800">
+            ${total} {plena && <span className="text-blue-700">(tarifa plena)</span>}
+          </dd>
+        </div>
       </dl>
 
       <div className="mt-6 flex flex-wrap gap-2">
@@ -180,7 +191,7 @@ function CheckoutContent() {
         </button>
         <button
           onClick={payWithEpayco}
-          className="rounded-full px-4 py-2 text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700"
+          className="rounded-full px-4 py-2 text-sm font-medium bg-blue-900 text-white hover:bg-blue-800"
         >
           Pagar con ePayco (Test)
         </button>
