@@ -61,7 +61,7 @@ function RespuestaContent() {
     (async () => {
       if (!user || !stash) {
         setStatusText("Datos incompletos");
-        setTimeout(() => router.replace("/agendas"), 2000);
+        setTimeout(() => router.replace("/bookings"), 2000);
         return;
       }
 
@@ -95,7 +95,7 @@ function RespuestaContent() {
       try { sessionStorage.removeItem("parkinglite:lastBooking"); } catch {}
 
       // Redirigimos SIEMPRE a los 2 s
-      setTimeout(() => router.replace("/agendas"), 2000);
+      setTimeout(() => router.replace("/bookings"), 2000);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
