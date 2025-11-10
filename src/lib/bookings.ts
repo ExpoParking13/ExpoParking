@@ -20,8 +20,7 @@ export function loadBookings(userId: string): Booking[] {
   try {
     const raw = localStorage.getItem(key(userId));
     const list = raw ? (JSON.parse(raw) as any[]) : [];
-    // fallback de status por si hay reservas viejas sin campo
-    return list.map((b) => ({ status: "paid", ...b })) as Booking[];
+    return list.map((b) => ({ status: "paid", ...b })) as Booking[]; // fallback
   } catch {
     return [];
   }
@@ -38,7 +37,8 @@ export function upsertBooking(userId: string, booking: Booking) {
   if (typeof window === "undefined") return;
   const all = loadBookings(userId);
   const i = all.findIndex((b) => b.id === booking.id);
-  if (i >= 0) all[i] = booking; else all.push(booking);
+  if (i >= 0) all[i] = booking;
+  else all.push(booking);
   localStorage.setItem(key(userId), JSON.stringify(all));
 }
 
@@ -57,23 +57,26 @@ export function updateBookingStatus(
   return true;
 }
 
-export function getBookingById(userId: string, bookingId: string): Booking | undefined {
+export function getBookingById(userId: string, bookingId: string) {
   return loadBookings(userId).find((b) => b.id === bookingId);
 }
 
-/* 🔧 nueva: elimina una reserva por id */
-export function removeBooking(userId: string, bookingId: string): boolean {
+export function removeBooking(userId: string, bookingId: string) {
   if (typeof window === "undefined") return false;
-  const all = loadBookings(userId);
-  const i = all.findIndex((b) => b.id === bookingId);
-  if (i < 0) return false;
-  all.splice(i, 1);
+  const all = loadBookings(userId).filter((b) => b.id !== bookingId);
   localStorage.setItem(key(userId), JSON.stringify(all));
   return true;
 }
 
-/* opcional: borra todas las reservas del usuario */
 export function clearBookings(userId: string) {
   if (typeof window === "undefined") return;
   localStorage.removeItem(key(userId));
+}
+
+/** 🔒 TEST TOTAL: convierte TODAS las reservas a 'paid'. */
+export function forceAllPaid(userId: string) {
+  if (typeof window === "undefined") return;
+  const all = loadBookings(userId);
+  const changed = all.map((b) => ({ ...b, status: "paid" as const }));
+  localStorage.setItem(key(userId), JSON.stringify(changed));
 }

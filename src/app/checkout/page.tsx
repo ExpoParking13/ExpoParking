@@ -118,41 +118,34 @@ function CheckoutContent() {
     } catch {}
 
     // 2) abrir ePayco
-    const ok = await loadEpayco();
-    if (!ok) {
-      alert("No se pudo cargar ePayco.");
-      return;
-    }
+      const reference = `ref_${Date.now()}`;
+      const BASE_URL =
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        (typeof window !== "undefined" ? window.location.origin : "");
 
-    const reference = `ref_${Date.now()}`;
-    const BASE_URL =
-      process.env.NEXT_PUBLIC_BASE_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "");
+      // ✅ sin query params: ePayco añadirá ?ref_payco=...
+      const response = `${BASE_URL}/pago/epayco/respuesta`;
 
-    const response = `${BASE_URL}/pago/epayco/respuesta?pid=${pid}&start=${encodeURIComponent(
-      startISO
-    )}&end=${encodeURIComponent(endISO)}&total=${total}&ref=${reference}&bid=${bookingId}`;
+      const handler = (window as any).ePayco.checkout.configure({
+        key: EP_PUBLIC,
+        test: EP_TEST,
+      });
 
-    const handler = (window as any).ePayco.checkout.configure({
-      key: EP_PUBLIC,
-      test: EP_TEST,
-    });
-
-    handler.open({
-      name: "Parking Lite",
-      description: parking.name + (plena ? " (tarifa plena)" : ""),
-      currency: "cop",
-      amount: total,
-      tax_base: total,
-      tax: 0,
-      tax_ico: 0,
-      country: "co",
-      external: "true",
-      response,
-      invoice: reference,
-      extra1: user.id,
-      extra2: bookingId,
-    });
+      handler.open({
+        name: "Parking Lite",
+        description: parking.name + (plena ? " (tarifa plena)" : ""),
+        currency: "cop",
+        amount: total,
+        tax_base: total,
+        tax: 0,
+        tax_ico: 0,
+        country: "co",
+        external: "true",
+        response,              // 👈 limpio
+        invoice: reference,
+        extra1: user.id,       // por si luego quieres usarlo
+        extra2: bookingId,     // idem
+      });
   };
 
   if (!parking || !start || !end) {
